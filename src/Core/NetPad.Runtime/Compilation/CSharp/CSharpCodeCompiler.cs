@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Emit;
 using NetPad.CodeAnalysis;
 using NetPad.DotNet;
@@ -63,21 +65,41 @@ public class CSharpCodeCompiler(IDotNetInfo dotNetInfo, ICodeAnalysisService cod
             .WithOverflowChecks(true)
             .WithAllowUnsafe(true);
 
-        return CSharpCompilation.Create(
+        var compilation = CSharpCompilation.Create(
             assemblyName,
             syntaxTrees: new[] { syntaxTree },
             options: compilationOptions,
             references: references
         );
+
+        // Now run the built-in generator infrastructure
+        var generators = GetSourceGenerators(assemblyLocations);
+        var driver = CSharpGeneratorDriver.Create(
+            generators: generators,
+            additionalTexts: null,
+            parseOptions: (CSharpParseOptions)compilation.SyntaxTrees[0].Options,
+            optionsProvider: null);
+
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var sourceGenCompilation, out var diagnostics);
+        return (CSharpCompilation)sourceGenCompilation;
     }
 
-    private PortableExecutableReference[] BuildMetadataReferences(
+    private static PortableExecutableReference[] BuildMetadataReferences(
         IEnumerable<byte[]> assemblyImages,
         HashSet<string> assemblyLocations)
     {
         return assemblyImages
             .Select(i => MetadataReference.CreateFromImage(i))
             .Union(assemblyLocations.Select(loc => MetadataReference.CreateFromFile(loc)))
+            .ToArray();
+    }
+
+    private static ISourceGenerator[] GetSourceGenerators(HashSet<string> assemblyLocations)
+    {
+        var assemblyLoader = new FromAssemblyLoader();
+        return assemblyLocations
+            .Select(loc => new AnalyzerFileReference(loc, assemblyLoader))
+            .SelectMany(x => x.GetGenerators("C#"))
             .ToArray();
     }
 
@@ -95,5 +117,19 @@ public class CSharpCodeCompiler(IDotNetInfo dotNetInfo, ICodeAnalysisService cod
             OutputKind.NetModule => ".netmodule",
             _ => throw new ArgumentOutOfRangeException(nameof(outputKind), outputKind, null)
         };
+    }
+}
+
+file class FromAssemblyLoader : IAnalyzerAssemblyLoader
+{
+    private readonly ConcurrentDictionary<string, Assembly> _loaded = new();
+
+    public void AddDependencyLocation(string fullPath)
+    {
+    }
+
+    public Assembly LoadFromPath(string fullPath)
+    {
+        return _loaded.GetOrAdd(fullPath, Assembly.LoadFrom);
     }
 }
