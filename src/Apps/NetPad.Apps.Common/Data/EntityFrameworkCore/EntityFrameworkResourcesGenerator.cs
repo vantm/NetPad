@@ -4,6 +4,8 @@ using NetPad.Apps.Data.EntityFrameworkCore.DataConnections;
 using NetPad.Apps.Data.EntityFrameworkCore.Scaffolding;
 using NetPad.Configuration;
 using NetPad.Data;
+using NetPad.Data.Metadata;
+using NetPad.Data.Security;
 using NetPad.DotNet;
 using NetPad.DotNet.CodeAnalysis;
 
@@ -29,7 +31,7 @@ internal class EntityFrameworkResourcesGenerator(
             settings,
             loggerFactory.CreateLogger<EntityFrameworkDatabaseScaffolder>());
 
-        var result = await scaffolder.ScaffoldAsync(efDbConnection, targetFrameworkVersion);
+        var result = await scaffolder.ScaffoldConnectionResourcesAsync(efDbConnection, targetFrameworkVersion);
 
         var applicationCode = GenerateApplicationCode(efDbConnection, result.Model.DbContextFile.ClassName, result.Model.DbContextFile.Code.ToCodeString());
 

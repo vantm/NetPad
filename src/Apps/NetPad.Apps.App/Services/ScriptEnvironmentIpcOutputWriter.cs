@@ -15,11 +15,16 @@ using Timer = System.Timers.Timer;
 namespace NetPad.Services;
 
 /// <summary>
-/// An <see cref="IOutputWriter{TOutput}"/> that coordinates sending of script output messages emitted by ScriptEnvironments to IPC clients.
-/// It employs queueing and max output limits to prevent over-flooding IPC with too much data.
+/// An <see cref="IOutputWriter{TOutput}"/> that coordinates sending of script output messages emitted by
+/// ScriptEnvironments to IPC clients, mainly the front end SPA. It employs queueing and max output limits
+/// to prevent over-flooding IPC channel with too much data.
 /// </summary>
 public sealed record ScriptEnvironmentIpcOutputWriter : IOutputWriter<object>, IDisposable
 {
+    private const int SendMessageQueueBatchSize = 1000;
+    private const int ProcessSendMessageQueueEveryMs = 50;
+    private const int MaxUserOutputMessagesPerRun = 10100;
+
     private readonly ScriptEnvironment _scriptEnvironment;
     private readonly IIpcService _ipcService;
     private readonly List<IDisposable> _disposables;
@@ -28,9 +33,6 @@ public sealed record ScriptEnvironmentIpcOutputWriter : IOutputWriter<object>, I
     private readonly Accessor<CancellationTokenSource> _ctsAccessor;
     private readonly ConcurrentQueue<IpcMessage> _sendMessageQueue;
     private readonly Timer _sendMessageQueueTimer;
-    private const int SendMessageQueueBatchSize = 1000;
-    private const int ProcessSendMessageQueueEveryMs = 50;
-    private const int MaxUserOutputMessagesPerRun = 10100;
     private int _userOutputMessagesSentThisRun;
     private bool _outputLimitReachedMessageSent;
     private readonly object _outputLimitReachedMessageSendLock = new();
@@ -71,23 +73,32 @@ public sealed record ScriptEnvironmentIpcOutputWriter : IOutputWriter<object>, I
 
     private void NotifyScriptEnvironmentStatusChanged(ScriptStatus newStatus)
     {
-        if (newStatus == ScriptStatus.Running)
+        try
         {
-            // Starting a new run
-            _sendMessageQueueTimer.Stop();
+            if (newStatus == ScriptStatus.Running)
+            {
+                // Starting a new run
+                _sendMessageQueueTimer.Stop();
 
-            _ctsAccessor.Value.Cancel();
-            _sendMessageQueue.Clear();
-            _userOutputMessagesSentThisRun = 0;
-            _outputLimitReachedMessageSent = false;
-            _ctsAccessor.Update(new CancellationTokenSource());
+                _ctsAccessor.Value.Cancel();
+                _ctsAccessor.Value.Dispose();
+                _sendMessageQueue.Clear();
+                _userOutputMessagesSentThisRun = 0;
+                _outputLimitReachedMessageSent = false;
+                _ctsAccessor.Update(new CancellationTokenSource());
 
-            _sendMessageQueueTimer.Start();
+                _sendMessageQueueTimer.Start();
+            }
+            else if (newStatus == ScriptStatus.Stopping)
+            {
+                // When a script is stopped explicitly, cancel sending all cancellable output messages
+                _ctsAccessor.Value.Cancel();
+                _ctsAccessor.Value.Dispose();
+            }
         }
-        else if (newStatus == ScriptStatus.Stopping)
+        catch (Exception e)
         {
-            // When a script is stopped explicitly, cancel sending all cancellable output messages
-            _ctsAccessor.Value.Cancel();
+            _logger.LogError(e, "Error handling script status change");
         }
     }
 
@@ -254,7 +265,11 @@ public sealed record ScriptEnvironmentIpcOutputWriter : IOutputWriter<object>, I
 
     public void Dispose()
     {
-        _ctsAccessor.Value.Cancel();
+        Try.Run(() =>
+        {
+            _ctsAccessor.Value.Cancel();
+            _ctsAccessor.Value.Dispose();
+        });
         _sendMessageQueueTimer.Stop();
         _sendMessageQueueTimer.Dispose();
         _sendMessageQueue.Clear();

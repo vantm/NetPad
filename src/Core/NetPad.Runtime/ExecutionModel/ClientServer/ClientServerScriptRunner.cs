@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 using NetPad.Application;
 using NetPad.Compilation;
 using NetPad.Configuration;
-using NetPad.Data;
 using NetPad.Data.Events;
+using NetPad.Data.Metadata;
 using NetPad.DotNet;
 using NetPad.Events;
 using NetPad.ExecutionModel.ClientServer.Messages;
@@ -66,7 +66,7 @@ public sealed partial class ClientServerScriptRunner : IScriptRunner
 
     private static readonly string[] _userVisibleAssemblies =
     [
-        typeof(INetPadRuntimeMarker).Assembly.Location,
+        typeof(INetPadRuntimeLibMarker).Assembly.Location,
         typeof(HtmlSerializer).Assembly.Location
     ];
 
@@ -447,16 +447,16 @@ public sealed partial class ClientServerScriptRunner : IScriptRunner
             _logger.LogError(ex, "Error stopping script");
         }
 
-        try
+        foreach (var subscription in _subscriptions)
         {
-            foreach (var subscription in _subscriptions)
+            try
             {
                 subscription.Dispose();
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error disposing subscriptions");
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing a subscription: {Subscription}", subscription.ToString());
+            }
         }
 
         _logger.LogTrace("Dispose end");

@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using System.Xml.Linq;
 using NetPad.Compilation;
 using NetPad.Configuration;
 using NetPad.Data;
 using NetPad.Data.Events;
+using NetPad.Data.Metadata;
 using NetPad.DotNet;
 using NetPad.DotNet.References;
 using NetPad.Events;
@@ -13,9 +13,7 @@ using NetPad.Scripts;
 using NetPad.Scripts.Events;
 using NetPad.Utilities;
 using OmniSharp;
-using OmniSharp.Events;
 using OmniSharp.FileWatching;
-using OmniSharp.Models.Events;
 using OmniSharp.Models.FilesChanged;
 using OmniSharp.Models.UpdateBuffer;
 using OmniSharp.Stdio;
@@ -58,11 +56,15 @@ public class AppOmniSharpServer(
     {
         _logger.LogDebug("Initializing script project for script: {Script}", environment.Script);
 
+        if (Directory.Exists(Project.ProjectDirectoryPath))
+        {
+            Directory.Delete(Project.ProjectDirectoryPath, recursive: true);
+        }
+
         await Project.CreateAsync(
             environment.Script.Config.TargetFrameworkVersion,
             ProjectOutputType.Executable,
             environment.Script.Config.UseAspNet ? DotNetSdkPack.AspNetApp : DotNetSdkPack.NetApp,
-            true,
             true,
             false);
 
@@ -447,7 +449,7 @@ public class AppOmniSharpServer(
     {
         try
         {
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
             await OmniSharpServer.SendAsync(new[]
             {
@@ -475,7 +477,7 @@ public class AppOmniSharpServer(
         try
         {
             buffer = !string.IsNullOrWhiteSpace(buffer) ? buffer : "//";
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
             await OmniSharpServer.SendAsync(new UpdateBufferRequest
             {
