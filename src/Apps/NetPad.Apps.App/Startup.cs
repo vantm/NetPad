@@ -9,42 +9,39 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NetPad.Apps;
-using NetPad.Apps.Configuration;
 using NetPad.Apps.CQs;
-using NetPad.Apps.Data;
 using NetPad.Apps.Data.EntityFrameworkCore;
 using NetPad.Apps.Plugins;
 using NetPad.Apps.Resources;
-using NetPad.Apps.Scripts;
 using NetPad.Apps.UiInterop;
-using NetPad.Assemblies;
 using NetPad.BackgroundServices;
 using NetPad.Common;
-using NetPad.Configuration;
 using NetPad.Data;
 using NetPad.ExecutionModel;
 using NetPad.Middlewares;
-using NetPad.Packages;
-using NetPad.Packages.NuGet;
 using NetPad.Plugins.OmniSharp;
 using NetPad.Scripts;
 using NetPad.Services;
-using NetPad.Sessions;
+using NetPad.Services.UiInterop;
 using NetPad.Swagger;
 
 namespace NetPad;
 
 public class Startup
 {
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _webHostEnvironment;
+
+    // Add built-in plugins here.
     private readonly Assembly[] _pluginAssemblies =
     [
-        typeof(Plugin).Assembly
+        typeof(OmniSharpPlugin).Assembly
     ];
 
     public Startup(IConfiguration configuration, IWebHostEnvironment webHostEnvironment)
     {
-        Configuration = configuration;
-        WebHostEnvironment = webHostEnvironment;
+        _configuration = configuration;
+        _webHostEnvironment = webHostEnvironment;
         Console.WriteLine("Configuration:");
         Console.WriteLine($"   - .NET Runtime Version: {Environment.Version.ToString()}");
         Console.WriteLine($"   - Environment: {webHostEnvironment.EnvironmentName}");
@@ -53,59 +50,34 @@ public class Startup
         Console.WriteLine($"   - Shell: {Program.Shell?.GetType().Name}");
     }
 
-    public IConfiguration Configuration { get; }
-    public IWebHostEnvironment WebHostEnvironment { get; }
-
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddCoreServices();
 
+        // Application services
         services.AddSingleton<HostInfo>();
-        services.AddTransient<ISettingsRepository, FileSystemSettingsRepository>();
-        services.AddSingleton<Settings>(sp => sp.GetRequiredService<ISettingsRepository>().GetSettingsAsync().Result);
-        services.AddSingleton<ISession, Session>();
         services.AddTransient<ILogoService, LogoService>();
         services.AddSingleton<ITrivialDataStore, FileSystemTrivialDataStore>();
         services.AddTransient<IIpcService, SignalRIpcService>();
-
-        // Script services
         services.AddTransient<ScriptService>();
-        services.AddTransient<IScriptRepository, FileSystemScriptRepository>();
         services.AddTransient<IAutoSaveScriptRepository, FileSystemAutoSaveScriptRepository>();
-        services.AddSingleton<IScriptNameGenerator, DefaultScriptNameGenerator>();
 
         // Script execution mechanism
         services.AddClientServerExecutionModel();
 
         // Data connections
         services
-            .AddDataConnectionFeature<
-                FileSystemDataConnectionRepository,
-                FileSystemDataConnectionResourcesRepository,
-                FileSystemDataConnectionResourcesCache>()
+            .AddDataConnectionFeature()
             .AddEntityFrameworkCoreDataConnectionDriver();
 
-        // Package management
-        services.AddTransient<IPackageProvider, NuGetPackageProvider>();
-
         // Plugins
-        var pluginInitialization = new PluginInitialization(Configuration, WebHostEnvironment);
+        var pluginInitialization = new PluginInitialization(_configuration, _webHostEnvironment);
         IPluginManager pluginManager = new PluginManager(pluginInitialization);
         services.AddSingleton(pluginInitialization);
         services.AddSingleton(pluginManager);
 
-        // Hosted services
-        services.AddHostedService<EventHandlerBackgroundService>();
-        services.AddHostedService<EventForwardToIpcBackgroundService>();
-        services.AddHostedService<ScriptEnvironmentBackgroundService>();
-        services.AddHostedService<ScriptsFileWatcherBackgroundService>();
-
-        // Should be the last hosted service so it runs last on app start
-        services.AddHostedService<AppSetupAndCleanupBackgroundService>();
-
-        var pluginRegistrations = new List<PluginRegistration>();
-
         // Register plugins
+        var pluginRegistrations = new List<PluginRegistration>();
         foreach (var pluginAssembly in _pluginAssemblies)
         {
             try
@@ -122,6 +94,14 @@ public class Startup
                 Console.Error.WriteLine("Could not register plugin: '{0}'. {1}", pluginAssembly.FullName, ex);
             }
         }
+
+        // Hosted background services
+        services.AddHostedService<EventHandlerBackgroundService>();
+        services.AddHostedService<EventForwardToIpcBackgroundService>();
+        services.AddHostedService<ScriptEnvironmentBackgroundService>();
+        services.AddHostedService<ScriptsFileWatcherBackgroundService>();
+        // Should be the last hosted service so it runs last on app start
+        services.AddHostedService<AppSetupAndCleanupBackgroundService>();
 
         // MVC
         var mvcBuilder = services.AddControllersWithViews()
@@ -149,20 +129,25 @@ public class Startup
 
         // Mediator
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(MediatorRequestPipeline<,>));
-        services.AddMediatR(new[] { typeof(Command).Assembly }.Union(pluginRegistrations.Select(pr => pr.Assembly))
-            .ToArray());
+        services.AddMediatR(
+            new[] { typeof(Command).Assembly }
+                .Concat(pluginRegistrations.Select(pr => pr.Assembly))
+                .ToArray()
+        );
 
         // Swagger
 #if DEBUG
-        SwaggerSetup.AddSwagger(services, WebHostEnvironment, pluginRegistrations);
+        SwaggerSetup.AddSwagger(services, _webHostEnvironment, pluginRegistrations);
 #endif
 
-        // Allow Shell to add/modify any service registrations it needs
+        // Allow Shell to add/modify any service registrations it needs.
         Program.Shell?.ConfigureServices(services);
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
     {
+        // Using DEBUG pre-processor symbol instead of checking environment. Reason is some users set
+        // DOTNET_ENVIRONMENT (or similar variables) to "Development" globally, which breaks app in production.
 #if DEBUG
         app.UseDeveloperExceptionPage();
 #else
@@ -173,11 +158,13 @@ public class Startup
         //app.UseHttpsRedirection();
         app.UseStaticFiles();
 
+#if !DEBUG
+        app.UseSpaStaticFiles();
+#endif
+
 #if DEBUG
         app.UseOpenApi();
         app.UseSwaggerUi3();
-#else
-        app.UseSpaStaticFiles();
 #endif
 
         InitializeHostInfo(app, env);

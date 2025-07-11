@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using NetPad.Data;
+using NetPad.Data.Metadata;
 using NetPad.Scripts;
 using NetPad.Tests;
 using NetPad.Tests.Helpers;
@@ -19,11 +19,34 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     }
 
     [Fact]
+    public async Task IsOpenReturnsTrueWhenScriptIsOpen()
+    {
+        var session = SessionTestHelper.CreateSession(ServiceProvider);
+        var script = ScriptTestHelper.CreateScript();
+        await session.OpenAsync(script, false);
+
+        var isOpen = session.IsOpen(script.Id);
+
+        Assert.True(isOpen);
+    }
+
+    [Fact]
+    public void IsOpenReturnsFalseWhenScriptIsNotOpen()
+    {
+        var session = SessionTestHelper.CreateSession(ServiceProvider);
+        var script = ScriptTestHelper.CreateScript();
+
+        var isOpen = session.IsOpen(script.Id);
+
+        Assert.False(isOpen);
+    }
+
+    [Fact]
     public async Task GettingOpenedScriptById_ReturnsCorrectScript()
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         var result = session.Get(script.Id);
 
@@ -35,7 +58,7 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
         await session.CloseAsync(script.Id);
 
         var result = session.Get(script.Id);
@@ -68,8 +91,8 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script1 = ScriptTestHelper.CreateScript();
         var script2 = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script1);
-        await session.OpenAsync(script2);
+        await session.OpenAsync(script1, true);
+        await session.OpenAsync(script2, true);
 
         await session.ActivateAsync(script1.Id);
 
@@ -82,8 +105,8 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script1 = ScriptTestHelper.CreateScript();
         var script2 = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script1);
-        await session.OpenAsync(script2);
+        await session.OpenAsync(script1, true);
+        await session.OpenAsync(script2, true);
         await session.ActivateAsync(script1.Id);
 
         await session.ActivateLastActiveScriptAsync();
@@ -106,7 +129,7 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         await session.ActivateLastActiveScriptAsync();
 
@@ -118,7 +141,7 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         Assert.Equal(session.Active?.Script, script);
     }
@@ -128,9 +151,9 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
-        Assert.Equal(session.Environments.Single().Script, script);
+        Assert.Equal(session.GetOpened().Single().Script, script);
     }
 
     [Fact]
@@ -138,11 +161,11 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         await session.CloseAsync(script.Id);
 
-        Assert.Empty(session.Environments);
+        Assert.Empty(session.GetOpened());
     }
 
     [Fact]
@@ -152,9 +175,9 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var script1 = ScriptTestHelper.CreateScript();
         var script2 = ScriptTestHelper.CreateScript();
         var script3 = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script2);
-        await session.OpenAsync(script1);
-        await session.OpenAsync(script3);
+        await session.OpenAsync(script2, true);
+        await session.OpenAsync(script1, true);
+        await session.OpenAsync(script3, true);
 
         await session.CloseAsync(script3.Id);
 
@@ -166,7 +189,7 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
     {
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         await session.CloseAsync(script.Id);
 
@@ -180,9 +203,9 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var script1 = ScriptTestHelper.CreateScript();
         var script2 = ScriptTestHelper.CreateScript();
         var script3 = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script1);
-        await session.OpenAsync(script2);
-        await session.OpenAsync(script3);
+        await session.OpenAsync(script1, true);
+        await session.OpenAsync(script2, true);
+        await session.OpenAsync(script3, true);
 
         await session.CloseAsync(script2.Id);
         await session.CloseAsync(script3.Id);
@@ -197,9 +220,9 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var script1 = ScriptTestHelper.CreateScript();
         var script2 = ScriptTestHelper.CreateScript();
         var script3 = ScriptTestHelper.CreateScript();
-        await session.OpenAsync(script2);
-        await session.OpenAsync(script1);
-        await session.OpenAsync(script3);
+        await session.OpenAsync(script2, true);
+        await session.OpenAsync(script1, true);
+        await session.OpenAsync(script3, true);
 
         await session.CloseAsync(script1.Id);
 
@@ -218,7 +241,7 @@ public class SessionTests(ITestOutputHelper testOutputHelper) : TestBase(testOut
         var session = SessionTestHelper.CreateSession(ServiceProvider);
         var script = ScriptTestHelper.CreateScript();
 
-        await session.OpenAsync(script);
+        await session.OpenAsync(script, true);
 
         Assert.Equal(ScriptStatus.Ready, session.Active?.Status);
     }

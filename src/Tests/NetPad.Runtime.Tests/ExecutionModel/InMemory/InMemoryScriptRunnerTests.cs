@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NetPad.Assemblies;
 using NetPad.CodeAnalysis;
 using NetPad.Compilation;
 using NetPad.Compilation.CSharp;
@@ -93,7 +92,7 @@ public class InMemoryScriptRunnerTests(ITestOutputHelper testOutputHelper) : Tes
             await runtime.RunScriptAsync(new RunOptions());
 
             scope.Dispose();
-            GCUtil.CollectAndWait();
+            GcUtil.CollectAndWait();
 
             int loadedAssembliesCount = AppDomain.CurrentDomain.GetAssemblies().Length;
             Logger.LogDebug($"Loaded assemblies count: {loadedAssembliesCount}");

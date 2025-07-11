@@ -3,7 +3,7 @@ using System.IO;
 using Microsoft.Extensions.Logging;
 using NetPad.Compilation;
 using NetPad.Configuration;
-using NetPad.Data;
+using NetPad.Data.Metadata;
 using NetPad.DotNet;
 using NetPad.IO;
 using NetPad.Packages;
@@ -33,7 +33,7 @@ public sealed partial class ExternalScriptRunner : IScriptRunner
 
     private static readonly string[] _userVisibleAssemblies =
     [
-        typeof(INetPadRuntimeMarker).Assembly.Location,
+        typeof(INetPadRuntimeLibMarker).Assembly.Location,
         typeof(O2Html.HtmlSerializer).Assembly.Location
     ];
 
@@ -137,8 +137,7 @@ public sealed partial class ExternalScriptRunner : IScriptRunner
 
             _scriptProcess = startInfo.Run(
                 output => _ = OnProcessOutputReceived(output),
-                error => OnProcessErrorReceived(error, runDependencies.ParsingResult.UserProgramStartLineNumber),
-                isLongRunning: true
+                error => OnProcessErrorReceived(error, runDependencies.ParsingResult.UserProgramStartLineNumber)
             );
 
             var stopWatch = Stopwatch.StartNew();

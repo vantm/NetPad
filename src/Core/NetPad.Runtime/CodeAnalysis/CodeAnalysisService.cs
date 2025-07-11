@@ -16,7 +16,7 @@ public class CodeAnalysisService : ICodeAnalysisService
             .WithLanguageVersion(targetFrameworkVersion.GetLatestSupportedCSharpLanguageVersion())
             // TODO investigate using SourceCodeKind.Script (see cs-scripts branch)
             .WithKind(SourceCodeKind.Regular)
-            .WithPreprocessorSymbols(PreprocessorSymbols.For(optimizationLevel));
+            .WithPreprocessorSymbols(PreprocessorSymbols.For(optimizationLevel, targetFrameworkVersion));
     }
 
     public SyntaxTree GetSyntaxTree(
@@ -101,7 +101,7 @@ public class CodeAnalysisService : ICodeAnalysisService
             }
         }
 
-        return new SyntaxTriviaSlim(kind, trivia.GetLocation()!.GetLineSpan().Span, displayValue.Truncate(50, true));
+        return new SyntaxTriviaSlim(kind, trivia.GetLocation().GetLineSpan().Span, displayValue.Truncate(50, true));
     }
 
     private static readonly Dictionary<SyntaxKind, string> _triviaDisplayValues = new Dictionary<SyntaxKind, string>
